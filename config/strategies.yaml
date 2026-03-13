@@ -33,4 +33,4 @@ strategies:
     session_candle_tf: "H4"
 
   sk_system:
-    enabled: false
+    enabled: true
