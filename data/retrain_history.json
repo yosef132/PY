@@ -1,0 +1,107 @@
+[
+  {
+    "timestamp": "2026-03-13T04:24:40.238692",
+    "trades_used": 104,
+    "win_rate": 35.6,
+    "cv_accuracy": 61.2,
+    "train_accuracy": 99.0,
+    "replaced": true,
+    "comparison": {
+      "old_accuracy": 95.2,
+      "new_accuracy": 99.0,
+      "improvement": 3.8
+    },
+    "top_features": [
+      [
+        "sr_strength",
+        "0.063"
+      ],
+      [
+        "dow_cos",
+        "0.0586"
+      ],
+      [
+        "dow_sin",
+        "0.0434"
+      ],
+      [
+        "hour_sin",
+        "0.0423"
+      ],
+      [
+        "range_atr_ratio",
+        "0.0409"
+      ]
+    ]
+  },
+  {
+    "timestamp": "2026-03-13T06:01:55.769347",
+    "trades_used": 104,
+    "win_rate": 35.6,
+    "cv_accuracy": 61.2,
+    "train_accuracy": 99.0,
+    "replaced": true,
+    "comparison": {
+      "old_accuracy": 99.0,
+      "new_accuracy": 99.0,
+      "improvement": -0.0
+    },
+    "top_features": [
+      [
+        "sr_strength",
+        "0.063"
+      ],
+      [
+        "dow_cos",
+        "0.0586"
+      ],
+      [
+        "dow_sin",
+        "0.0434"
+      ],
+      [
+        "hour_sin",
+        "0.0423"
+      ],
+      [
+        "range_atr_ratio",
+        "0.0409"
+      ]
+    ]
+  },
+  {
+    "timestamp": "2026-03-13T06:02:18.804534",
+    "trades_used": 104,
+    "win_rate": 35.6,
+    "cv_accuracy": 61.2,
+    "train_accuracy": 99.0,
+    "replaced": true,
+    "comparison": {
+      "old_accuracy": 99.0,
+      "new_accuracy": 99.0,
+      "improvement": -0.0
+    },
+    "top_features": [
+      [
+        "sr_strength",
+        "0.063"
+      ],
+      [
+        "dow_cos",
+        "0.0586"
+      ],
+      [
+        "dow_sin",
+        "0.0434"
+      ],
+      [
+        "hour_sin",
+        "0.0423"
+      ],
+      [
+        "range_atr_ratio",
+        "0.0409"
+      ]
+    ]
+  }
+]

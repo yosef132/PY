@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/historical/*.parquet
+data/historical/*.csv
+data/models/*.pkl
+data/*.db
+logs/*.log
+.idea/
+.vscode/

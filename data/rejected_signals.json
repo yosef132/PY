@@ -1,0 +1,74 @@
+[
+  {
+    "time": "2026-03-13T16:10:16.366591",
+    "direction": "SELL",
+    "strategy": "support_resistance",
+    "confidence": 0.403,
+    "blocked_by": "ml",
+    "reason": "score 0.403"
+  },
+  {
+    "time": "2026-03-13T16:10:16.366591",
+    "direction": "BUY",
+    "strategy": "ict",
+    "confidence": 0.4,
+    "blocked_by": "ml",
+    "reason": "score 0.400"
+  },
+  {
+    "time": "2026-03-13T16:10:16.366591",
+    "direction": "SELL",
+    "strategy": "ict",
+    "confidence": 0.376,
+    "blocked_by": "ml",
+    "reason": "score 0.376"
+  },
+  {
+    "time": "2026-03-13T16:15:17.027691",
+    "direction": "SELL",
+    "strategy": "support_resistance",
+    "confidence": 0.399,
+    "blocked_by": "ml",
+    "reason": "score 0.399"
+  },
+  {
+    "time": "2026-03-13T16:15:17.027691",
+    "direction": "BUY",
+    "strategy": "ict",
+    "confidence": 0.395,
+    "blocked_by": "ml",
+    "reason": "score 0.395"
+  },
+  {
+    "time": "2026-03-13T16:15:17.027691",
+    "direction": "SELL",
+    "strategy": "ict",
+    "confidence": 0.372,
+    "blocked_by": "ml",
+    "reason": "score 0.372"
+  },
+  {
+    "time": "2026-03-13T16:20:18.039865",
+    "direction": "SELL",
+    "strategy": "support_resistance",
+    "confidence": 0.389,
+    "blocked_by": "ml",
+    "reason": "score 0.389"
+  },
+  {
+    "time": "2026-03-13T16:20:18.039865",
+    "direction": "BUY",
+    "strategy": "ict",
+    "confidence": 0.386,
+    "blocked_by": "ml",
+    "reason": "score 0.386"
+  },
+  {
+    "time": "2026-03-13T16:20:18.039865",
+    "direction": "SELL",
+    "strategy": "ict",
+    "confidence": 0.363,
+    "blocked_by": "ml",
+    "reason": "score 0.363"
+  }
+]

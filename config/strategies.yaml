@@ -1,0 +1,36 @@
+# ============================================================
+# Strategy Configuration
+# ============================================================
+
+strategies:
+  support_resistance:
+    enabled: true
+    lookback: 50
+    min_touches: 2
+    zone_atr_mult: 0.3
+
+  rsi_divergence:
+    enabled: true
+    rsi_period: 14
+    min_divergence: 5
+    signal_tf: "H1"
+    entry_tf: "M15"
+
+  ict:
+    enabled: true
+    ob_lookback: 20
+    fvg_min_points: 50
+    killzone_only: true
+
+  wyckoff:
+    enabled: true
+    range_lookback: 100
+    volume_confirm: true
+    min_range_candles: 30
+
+  crt:
+    enabled: true
+    session_candle_tf: "H4"
+
+  sk_system:
+    enabled: false

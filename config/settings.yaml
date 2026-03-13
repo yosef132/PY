@@ -1,0 +1,51 @@
+mt5:
+  login: 92877
+  password: Hd*bTpI5
+  server: Nexcbitmarket-Trade
+  terminal_path: null
+symbol: XAUUSD
+timeframes:
+- M5
+- M15
+- H1
+- H4
+- D1
+data:
+  history_bars: 5000
+  storage_format: parquet
+  data_dir: data/historical
+risk:
+  risk_per_trade_pct: 0.5
+  max_daily_loss_pct: 3.0
+  max_open_positions: 2
+  min_risk_reward: 2.0
+  max_drawdown_pct: 10.0
+  sl_atr_multiplier: 1.5
+  tp_atr_multiplier: 3.0
+  trailing_stop_atr: 0.5
+  news_blackout_minutes: 30
+sessions:
+  london_start: 07:00
+  london_end: '12:00'
+  newyork_start: '12:00'
+  newyork_end: '17:00'
+  trade_overlap_only: false
+ml:
+  model_type: xgboost
+  confidence_threshold: 0.65
+  retrain_day: Sunday
+  lookback_months: 6
+  min_trades_to_train: 100
+execution:
+  mode: demo
+  lot_size: 0.01
+  slippage_points: 30
+  magic_number: 123456
+logging:
+  level: INFO
+  log_dir: logs
+  trade_log_db: data/trades.db
+alerts:
+  telegram_enabled: true
+  telegram_token: 8760045272:AAH2VKn6vNRFlr0pb_KVGOIl8k_v_wz0FGg
+  telegram_chat_id: '6553286774'

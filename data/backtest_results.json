@@ -1,0 +1,129 @@
+{
+  "stats": {
+    "total_trades": 34,
+    "wins": 32,
+    "losses": 2,
+    "win_rate": 94.1,
+    "total_pnl": 1579.26,
+    "avg_win": 50.3,
+    "avg_loss": 15.16,
+    "profit_factor": 53.09,
+    "max_drawdown_pct": 0.5,
+    "final_balance": 4579.26,
+    "return_pct": 52.64,
+    "strategy_breakdown": {
+      "ict": {
+        "wins": 27,
+        "losses": 2,
+        "pnl": 1332.3600000000001
+      },
+      "crt": {
+        "wins": 2,
+        "losses": 0,
+        "pnl": 71.8
+      },
+      "support_resistance": {
+        "wins": 1,
+        "losses": 0,
+        "pnl": 42.39
+      },
+      "rsi_divergence": {
+        "wins": 2,
+        "losses": 0,
+        "pnl": 132.71
+      }
+    }
+  },
+  "balance_curve": [],
+  "baseline": {
+    "total_trades": 91,
+    "wins": 33,
+    "losses": 58,
+    "win_rate": 36.3,
+    "total_pnl": 176.18,
+    "avg_win": 47.0,
+    "avg_loss": 23.7,
+    "profit_factor": 1.13,
+    "max_drawdown_pct": 11.29,
+    "final_balance": 3176.23,
+    "return_pct": 5.87,
+    "strategy_breakdown": {
+      "ict": {
+        "wins": 28,
+        "losses": 47,
+        "pnl": 202.4800000000002
+      },
+      "rsi_divergence": {
+        "wins": 2,
+        "losses": 7,
+        "pnl": -70.17999999999999
+      },
+      "crt": {
+        "wins": 2,
+        "losses": 2,
+        "pnl": 36.51
+      },
+      "support_resistance": {
+        "wins": 1,
+        "losses": 1,
+        "pnl": 27.55
+      },
+      "wyckoff": {
+        "wins": 0,
+        "losses": 1,
+        "pnl": -20.18
+      }
+    }
+  },
+  "ml_metrics": {
+    "cv_accuracy": 56.9,
+    "cv_std": 9.9,
+    "train_accuracy": 98.9,
+    "n_samples": 91,
+    "n_features": 43,
+    "win_rate_in_data": 36.3,
+    "top_features": [
+      [
+        "dow_cos",
+        0.08124437928199768
+      ],
+      [
+        "range_atr_ratio",
+        0.05956648290157318
+      ],
+      [
+        "hour_sin",
+        0.052689578384160995
+      ],
+      [
+        "effort_vs_result",
+        0.04615858942270279
+      ],
+      [
+        "hvol_20",
+        0.04520047456026077
+      ],
+      [
+        "mfi_14",
+        0.043500907719135284
+      ],
+      [
+        "dow_sin",
+        0.041511859744787216
+      ],
+      [
+        "sr_strength",
+        0.04008900001645088
+      ],
+      [
+        "sr_position",
+        0.039623700082302094
+      ],
+      [
+        "body_atr_ratio",
+        0.0384652316570282
+      ]
+    ]
+  },
+  "timestamp": "1773109843.547899"
+}
