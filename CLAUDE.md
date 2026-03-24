@@ -12,6 +12,7 @@ An automated AI trading bot for Gold (XAUUSD) on MetaTrader 5 demo account.
 - 6 trading strategies generate signals (ICT, Wyckoff, RSI Divergence, S&R, CRT, SK System)
 - XGBoost ML model scores each signal (binary win/loss prediction)
 - 4-layer filter: MTF trend → news blackout → ML score → risk manager
+- **3-tier MTF filter**: W1 (macro) → H4 (medium) → H1 (entry). W1 BULLISH + H4 BEARISH = pullback entry allowed
 - Binance XAUUSDT perpetual futures used as cross-reference (funding rate, OI, bias)
 - Economic calendar + headline sentiment block trades around major news events
 - Trades execute on MT5 via the MetaTrader5 Python API
@@ -47,7 +48,7 @@ xauusd-ai-trader/
 │   ├── strategies/
 │   │   ├── base.py             # Signal dataclass + BaseStrategy
 │   │   ├── strategy_manager.py # Runs all enabled strategies
-│   │   ├── mtf_filter.py       # H4+D1 trend confirmation filter
+│   │   ├── mtf_filter.py       # W1+H4+D1 three-tier trend confirmation filter
 │   │   ├── ict_strategy.py
 │   │   ├── wyckoff_strategy.py
 │   │   ├── rsi_divergence_strategy.py
@@ -71,7 +72,7 @@ xauusd-ai-trader/
 │   ├── executor/
 │   │   ├── live_engine.py      # Main 5-min scan loop (v4)
 │   │   ├── mt5_executor.py     # Places/closes orders on MT5
-│   │   └── trailing_stop.py    # Activates at 1R, trails by 0.5×ATR
+│   │   └── trailing_stop.py    # Partial TP at 1R (50% closed), SL→breakeven, trail 0.5×ATR
 │   └── alerts/
 │       └── telegram_alerts.py  # Sends trade notifications to Telegram
 └── data/
@@ -127,32 +128,39 @@ TELEGRAM_CHAT_ID=123456789
 | `risk.max_drawdown_pct` | 10.0 | Drawdown limit from peak balance |
 | `risk.min_signal_confidence` | 0.60 | Pre-ML signal quality filter |
 | `risk.min_risk_reward` | 2.0 | Minimum R:R ratio |
+| `risk.max_trade_hours` | 48 | Close losing trades open longer than this |
+| `risk.max_trade_hours_hard` | 72 | Close ALL trades open longer than this (hard limit) |
+| `risk.partial_tp_enabled` | true | Close 50% at 1R, trail remaining 50% to 2R |
 | `loop.scan_interval_seconds` | 300 | How often the bot scans (5 min) |
 | `loop.news_refresh_seconds` | 900 | How often news is refreshed (15 min) |
-| `loop.h4_refresh_seconds` | 3600 | How often H4/D1 trend is refreshed (1 hour) |
+| `loop.h4_refresh_seconds` | 3600 | How often W1/H4/D1 trend is refreshed (1 hour) |
 
 ---
 
 ## Live engine flow (live_engine.py)
 
 Every `scan_interval` seconds:
-1. `reset_daily()` — resets daily counters at midnight (Bug #1 fix)
-2. Refresh news/H4 if their intervals elapsed
-3. Fetch Binance data (funding rate, OI, bias)
-4. Fetch 500 H1 candles from MT5
-5. **Stale data check** — skip scan if last candle > 3 hours old
-6. Compute 133 features (67 indicators + structure + S/R + sessions + divergence + Wyckoff)
-7. Run all 6 strategies → raw signals
-8. Signal filter (RR, confidence, SL distance, TP direction)
-9. For each signal (max 3 per scan):
-   - MTF filter (H4+D1 trend must agree or be neutral)
-   - Binance boost/penalty (±0.05 confidence)
-   - News blackout check
-   - ML score (XGBoost — must be ≥ 0.65)
-   - Risk manager veto (daily limit, drawdown, max positions)
-   - Execute on MT5
-10. Update trailing stops on open positions
-11. Print status
+1. `reset_daily()` — resets daily counters at midnight
+2. `_update_trade_outcomes()` — checks MT5 for closed positions, updates live_trades.json with win/loss/pnl
+3. `_check_time_exits()` — closes losing trades open > 48h, any trade open > 72h
+4. Refresh news/W1+H4+D1 if their intervals elapsed
+5. Fetch Binance data (funding rate, OI, bias)
+6. Fetch 500 H1 candles from MT5
+7. **Stale data check** — skip scan if last candle > 3 hours old
+8. Compute 133 features (67 indicators + structure + S/R + sessions + divergence + Wyckoff)
+9. Run all 6 strategies → raw signals
+10. Signal filter (RR, confidence, SL distance, TP direction)
+11. **Recency filter** — only signals from last 24 H1 bars (prevents stale signal execution)
+12. For each signal (max 3 per scan):
+    - **3-tier MTF filter**: W1+H4+D1 (W1 BULLISH + H4 BEARISH = pullback allowed)
+    - Binance boost/penalty (±0.05 confidence)
+    - News blackout check
+    - ML score (XGBoost — must be ≥ threshold)
+    - **Correlation check** — max 2 same-direction positions
+    - Risk manager veto (daily limit, drawdown, max positions)
+    - Execute on MT5 — saves entry_features + bar_sequence to trade log
+13. Update trailing stops → partial TP at 1R (50% closed), SL → breakeven, trail remaining
+14. Print status (shows W1/H4/D1 trend)
 
 ---
 
@@ -186,10 +194,10 @@ Every `scan_interval` seconds:
 | Phase 1 | Foundation — data, features, backtester | COMPLETE |
 | Phase 2 | All 6 strategies + risk manager | COMPLETE |
 | Phase 3 | XGBoost ML + news filter + live demo execution + dashboard | COMPLETE |
-| Phase 4 | Self-improving: auto-retrain, LSTM, A/B testing | ~65% done |
+| Phase 4 | Self-improving: auto-retrain, LSTM, A/B testing | ~80% done |
 | Phase 5 | Live trading | NOT STARTED |
 
-### Phase 4 completed (2026-03-24)
+### Phase 4 completed
 - [x] Fixed ML overfitting: adaptive regularization (depth/trees/lambda scale with samples/features ratio)
 - [x] Fixed data snooping in backtester: 70/30 walk-forward split, ML trained only on first 70%
 - [x] Fixed lookahead bias in swing point detection (market_structure.py)
@@ -199,6 +207,13 @@ Every `scan_interval` seconds:
 - [x] Fixed hardcoded confidence threshold in risk_manager.py (now reads min_signal_confidence from settings.yaml)
 - [x] Fixed stale signal bug: recency filter (last 24 H1 bars) prevents signals from weeks-old bars executing at current price
 - [x] Fixed executor TP/SL sanity check: rejects trades where TP/SL are wrong-sided instead of silently adjusting
+- [x] Added Sunday auto-retraining wired into live engine loop
+- [x] Added trade outcome tracker: detects MT5 position closures, updates live_trades.json with win/loss/pnl
+- [x] Added entry_features + bar_sequence saved per trade (LSTM-ready training data)
+- [x] Added W1 (weekly) to MTF filter — 3-tier W1+H4+D1 system, pullback entries now allowed
+- [x] Added time-based exit: losing trades closed after 48h, hard limit 72h
+- [x] Added correlation protection: max 2 same-direction positions open simultaneously
+- [x] Added partial TP at 1R: closes 50% at market, moves SL to breakeven, trails remaining 50%
 
 ### Phase 4 remaining work
 - [ ] **DATA COLLECTION** — run bot continuously until 300+ trades logged in data/live_trades.json
@@ -219,8 +234,9 @@ Every `scan_interval` seconds:
 - Bot running on demo account 92877 (Nexcbitmarket-Trade)
 - Thresholds temporarily lowered for data collection: ML=0.50, min_signal_confidence=0.50
 - Restore to ML=0.65, min_signal_confidence=0.60 after 300+ trades and retraining
-- Trade frequency: ~1-3 per day (higher during London/NY sessions 07:00-17:00 UTC)
-- Current trade count in data/live_trades.json: check with `py -c "import json; d=json.load(open('data/live_trades.json')); print(len(d))"`
+- Trade frequency: ~2-4 per day (W1 BULLISH now allows BUY pullback entries, not just SELLs)
+- W1=BULLISH | H4=BEARISH | D1=BEARISH (gold pullback in macro bull trend — as of 2026-03-24)
+- Current trade count: `py -c "import json; d=json.load(open('data/live_trades.json')); print(len(d))"`
 
 ### Planned upgrades (in order)
 1. **Now**: Collect 300 demo trades — keep bot running 24/7
