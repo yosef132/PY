@@ -24,11 +24,14 @@ risk:
   sl_atr_multiplier: 1.5
   tp_atr_multiplier: 3.0
   trailing_stop_atr: 0.5
+  partial_tp_enabled: true        # Close 50% at 1R, let 50% run to full TP
   news_blackout_minutes: 30
   min_signal_confidence: 0.50   # Lowered from 0.60 — matches ML threshold; raise back to 0.60 once 300+ trades collected
   max_signals_per_bar: 1        # Max signals per candle per direction
   min_sl_distance_pct: 0.05     # SL must be at least 0.05% from entry
   max_sl_distance_pct: 2.0      # SL cannot be more than 2% from entry
+  max_trade_hours: 48           # Close losing trades after 48h (prevents trapped capital)
+  max_trade_hours_hard: 72      # Close ALL trades after 72h regardless of P&L
 sessions:
   london_start: 07:00
   london_end: '12:00'

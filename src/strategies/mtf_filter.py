@@ -26,6 +26,7 @@ class MTFFilter:
     """
 
     def __init__(self):
+        self.w1_trend = 0       # +1 = bullish, -1 = bearish, 0 = neutral (weekly macro)
         self.h4_trend = 0       # +1 = bullish, -1 = bearish, 0 = neutral
         self.h4_strength = 0.0  # 0.0 to 1.0
         self.h4_data = {}       # Cached H4 analysis
@@ -33,11 +34,14 @@ class MTFFilter:
 
     def analyze_higher_timeframes(self, featured_data: dict):
         """
-        Analyze H4 and D1 data to determine the higher timeframe trend.
-
-        Args:
-            featured_data: Dict with "H4" and optionally "D1" DataFrames
+        Analyze W1, H4 and D1 data to determine the higher timeframe trend.
+        W1 = macro context, H4 = medium-term bias, D1 = daily confirmation.
         """
+        # Analyze W1 (macro trend — overrides H4 hard block when disagreement = pullback)
+        if "W1" in featured_data:
+            self.w1_trend, _, _ = self._analyze_trend(featured_data["W1"], "W1")
+            logger.info(f"  W1 Trend: {'BULLISH' if self.w1_trend > 0 else 'BEARISH' if self.w1_trend < 0 else 'NEUTRAL'}")
+
         # Analyze H4
         if "H4" in featured_data:
             h4_df = featured_data["H4"]
@@ -169,47 +173,79 @@ class MTFFilter:
 
     def filter_signal(self, signal) -> tuple:
         """
-        Check if an H1 signal aligns with the higher timeframe trend.
+        3-tier filter: W1 (macro) → H4 (medium) → entry allowed/blocked.
 
-        Returns:
-            (allowed: bool, reason: str, confidence_adjustment: float)
+        W1 available:
+          W1 + H4 both agree with signal  → strong allow, max boost (+12%)
+          W1 agrees, H4 neutral            → allow, medium boost (+7%)
+          W1 agrees, H4 against (pullback) → allow as pullback entry (+5%)
+          W1 against, H4 agrees            → allow, no boost (risky counter-macro)
+          W1 against, H4 neutral           → allow, no boost
+          W1 + H4 both against             → block
+
+        W1 neutral → fall back to original H4+D1 logic.
         """
         direction = signal.direction
+        is_buy = direction == "BUY"
 
-        # --- Rule 1: H4 trend alignment ---
+        # ── W1 macro context available ──────────────────────────────────
+        if self.w1_trend != 0:
+            w1_with = (is_buy and self.w1_trend > 0) or (not is_buy and self.w1_trend < 0)
+            h4_with = (is_buy and self.h4_trend > 0) or (not is_buy and self.h4_trend < 0)
+            h4_neutral = self.h4_trend == 0
+
+            if w1_with and h4_with:
+                # All timeframes aligned — strongest signal
+                boost = 0.12 + self.h4_strength * 0.05
+                if self.d1_trend != 0 and ((is_buy and self.d1_trend > 0) or (not is_buy and self.d1_trend < 0)):
+                    boost += 0.03  # D1 also agrees
+                return True, f"W1+H4 aligned with {direction} (+{boost:.0%})", boost
+
+            elif w1_with and h4_neutral:
+                return True, f"W1 aligned with {direction}, H4 neutral (+7%)", 0.07
+
+            elif w1_with and not h4_with:
+                # W1 agrees but H4 disagrees = pullback in macro trend (high-probability setup)
+                w1_label = "BULLISH" if self.w1_trend > 0 else "BEARISH"
+                return True, f"Pullback entry: W1={w1_label}, H4 short-term against (+5%)", 0.05
+
+            elif not w1_with and (h4_neutral or h4_with):
+                # Counter-macro trade — allow but no boost
+                w1_label = "BULLISH" if self.w1_trend > 0 else "BEARISH"
+                return True, f"Counter W1 macro ({w1_label}), H4 local align — no boost", 0.0
+
+            else:
+                # Both W1 and H4 against the signal — block
+                w1_label = "BULLISH" if self.w1_trend > 0 else "BEARISH"
+                h4_label = "BULLISH" if self.h4_trend > 0 else "BEARISH"
+                return False, f"{direction} blocked: W1={w1_label}, H4={h4_label} both against", 0
+
+        # ── W1 neutral: fall back to original H4 + D1 logic ────────────
         if self.h4_trend != 0:
             if direction == "BUY" and self.h4_trend < 0:
-                return False, f"BUY blocked: H4 trend is BEARISH (score: {self.h4_data.get('trend_score', 0)})", 0
-
+                return False, f"BUY blocked: H4 BEARISH (score: {self.h4_data.get('trend_score', 0)})", 0
             if direction == "SELL" and self.h4_trend > 0:
-                return False, f"SELL blocked: H4 trend is BULLISH (score: {self.h4_data.get('trend_score', 0)})", 0
+                return False, f"SELL blocked: H4 BULLISH (score: {self.h4_data.get('trend_score', 0)})", 0
 
-        # --- Rule 2: D1 alignment bonus ---
         confidence_boost = 0.0
-
         if self.d1_trend != 0:
-            if (direction == "BUY" and self.d1_trend > 0) or \
-               (direction == "SELL" and self.d1_trend < 0):
-                confidence_boost += 0.05  # D1 agrees = +5% confidence
+            if (is_buy and self.d1_trend > 0) or (not is_buy and self.d1_trend < 0):
+                confidence_boost += 0.05
 
-        # --- Rule 3: H4 strength bonus ---
         if self.h4_trend != 0:
-            if (direction == "BUY" and self.h4_trend > 0) or \
-               (direction == "SELL" and self.h4_trend < 0):
-                confidence_boost += self.h4_strength * 0.10  # Up to +10%
+            if (is_buy and self.h4_trend > 0) or (not is_buy and self.h4_trend < 0):
+                confidence_boost += self.h4_strength * 0.10
 
-        # --- Rule 4: H4 neutral = allow but no boost ---
         if self.h4_trend == 0:
-            return True, "H4 neutral - signal allowed without boost", 0
+            return True, "H4 neutral — allowed without boost", 0
 
-        reason = (f"H4 {'BULLISH' if self.h4_trend > 0 else 'BEARISH'} aligns with {direction} "
-                  f"(boost: +{confidence_boost:.1%})")
-
+        reason = f"H4 {'BULLISH' if self.h4_trend > 0 else 'BEARISH'} aligns with {direction} (+{confidence_boost:.1%})"
         return True, reason, confidence_boost
 
     def get_status(self) -> dict:
         """Get current MTF analysis status."""
         return {
+            "w1_trend": "BULLISH" if self.w1_trend > 0 else "BEARISH" if self.w1_trend < 0 else "NEUTRAL",
             "h4_trend": "BULLISH" if self.h4_trend > 0 else "BEARISH" if self.h4_trend < 0 else "NEUTRAL",
             "h4_strength": self.h4_strength,
             "h4_details": self.h4_data,

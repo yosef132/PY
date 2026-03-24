@@ -334,11 +334,51 @@ class LiveTradingEngine:
             self._save_trade_log()
             logger.info(f"  {updated} trade outcome(s) updated in live_trades.json")
 
+    def _check_time_exits(self):
+        """Close trades that have been open too long to prevent trapped capital."""
+        positions = self.executor.get_open_positions()
+        if not positions:
+            return
+
+        risk_cfg = self.settings.get("risk", {})
+        max_hours = risk_cfg.get("max_trade_hours", 48)
+        max_hours_hard = risk_cfg.get("max_trade_hours_hard", 72)
+
+        now = datetime.now()
+        for pos in positions:
+            try:
+                open_time = datetime.fromisoformat(pos["time"])
+                hours_open = (now - open_time).total_seconds() / 3600
+
+                if hours_open >= max_hours_hard:
+                    reason = f"hard limit {max_hours_hard}h"
+                elif hours_open >= max_hours and pos["profit"] <= 0:
+                    reason = f"losing after {max_hours}h"
+                else:
+                    continue
+
+                logger.info(f"  TIME EXIT #{pos['ticket']}: {hours_open:.0f}h open | "
+                            f"PnL: ${pos['profit']:.2f} | Reason: {reason}")
+                result = self.executor.close_position(pos["ticket"])
+                if result["success"]:
+                    self.telegram.send(
+                        f"\u23f1 <b>Time Exit</b>\n"
+                        f"#{pos['ticket']} {pos['direction']}\n"
+                        f"Open: {hours_open:.0f}h | PnL: ${pos['profit']:.2f}\n"
+                        f"Reason: {reason}"
+                    )
+            except Exception as e:
+                logger.warning(f"  Time exit check error #{pos.get('ticket')}: {e}")
+
     def _refresh_h4_trend(self):
         try:
-            logger.info("  Refreshing H4/D1 trend analysis...")
+            logger.info("  Refreshing W1/H4/D1 trend analysis...")
             collector = DataCollector(self.connector)
             featured_data = {}
+
+            w1_df = collector.fetch_candles("W1", num_bars=60)
+            if not w1_df.empty:
+                featured_data["W1"] = self.feature_engine.compute_features(w1_df, "W1")
 
             h4_df = collector.fetch_candles("H4", num_bars=200)
             if not h4_df.empty:
@@ -352,7 +392,7 @@ class LiveTradingEngine:
             self.last_h4_refresh = time.time()
 
             status = self.mtf_filter.get_status()
-            logger.info(f"  MTF: H4={status['h4_trend']} ({status['h4_strength']:.2f}) | D1={status['d1_trend']}")
+            logger.info(f"  MTF: W1={status['w1_trend']} | H4={status['h4_trend']} ({status['h4_strength']:.2f}) | D1={status['d1_trend']}")
 
         except Exception as e:
             logger.warning(f"  H4/D1 refresh failed: {e}")
@@ -368,6 +408,9 @@ class LiveTradingEngine:
 
         # Update outcomes for any trades closed since last scan
         self._update_trade_outcomes()
+
+        # Close trades that have been open too long
+        self._check_time_exits()
 
         # Periodic refreshes
         if time.time() - self.last_news_refresh > self.news_refresh_interval:
@@ -496,10 +539,17 @@ class LiveTradingEngine:
             if sizing["lot_size"] <= 0:
                 continue
 
-            # Max positions check
+            # Max positions check + correlation protection
             open_positions = self.executor.get_open_positions()
             if len(open_positions) >= self.risk_manager.max_open_positions:
                 logger.info(f"  Max positions ({len(open_positions)})")
+                continue
+
+            same_dir = [p for p in open_positions if p["direction"] == signal.direction]
+            max_same_dir = max(1, self.risk_manager.max_open_positions - 1)
+            if len(same_dir) >= max_same_dir:
+                logger.info(f"  Correlation block: {len(same_dir)} {signal.direction} positions already open")
+                self._log_rejection(scan_time, signal, "risk", f"correlation: {len(same_dir)} same-dir positions")
                 continue
 
             logger.info(f"\n  >>> SIGNAL PASSED ALL FILTERS <<<")
@@ -649,8 +699,8 @@ class LiveTradingEngine:
             print(f"  Scans: {self.total_scans + 1} | Trades: {self.total_trades_placed}")
         print(f"  Balance: ${account.get('balance', 0):.2f} | Equity: ${account.get('equity', 0):.2f} | "
               f"Session PnL: ${session_pnl:+.2f}")
-        print(f"  H4 Trend: {mtf_status['h4_trend']} ({mtf_status['h4_strength']:.2f}) | "
-              f"D1 Trend: {mtf_status['d1_trend']}")
+        print(f"  W1: {mtf_status['w1_trend']} | H4: {mtf_status['h4_trend']} ({mtf_status['h4_strength']:.2f}) | "
+              f"D1: {mtf_status['d1_trend']}")
         print(f"  Open positions: {len(positions)}")
 
         for pos in positions:

@@ -33,9 +33,10 @@ class TrailingStopManager:
         self.trail_atr_mult = 0.5     # Trail at 0.5x ATR behind price
         self.breakeven_buffer = 1.0   # Move SL to entry + 1 point (cover spread)
         self.min_trail_distance = 3.0 # Minimum trail distance in price points
+        self.partial_tp_enabled = settings.get("risk", {}).get("partial_tp_enabled", True)
 
         # Track which positions have trailing activated
-        self.trailing_active = {}  # ticket -> {"activated": bool, "last_sl": float}
+        self.trailing_active = {}  # ticket -> state dict
 
     def update_trailing_stops(self, current_atr: float = None):
         """
@@ -86,6 +87,8 @@ class TrailingStopManager:
                     "activated": False,
                     "original_sl": current_sl,
                     "best_price": entry,
+                    "partial_tp_done": False,
+                    "original_volume": pos.volume,
                 }
 
             state = self.trailing_active[ticket]
@@ -99,9 +102,14 @@ class TrailingStopManager:
                 else:
                     state["best_price"] = min(state["best_price"], current_price)
 
-            # Step 1: Activate trailing when profit reaches 1R
+            # Step 1: At 1R — partial TP + activate trailing
             if not state["activated"] and r_multiple >= self.activation_r:
-                # Move SL to breakeven
+                # Partial TP: close 50% at market to lock in profit
+                if self.partial_tp_enabled and not state["partial_tp_done"]:
+                    self._partial_close(ticket, pos.volume)
+                    state["partial_tp_done"] = True
+
+                # Move SL to breakeven on remaining position
                 if direction == "BUY":
                     new_sl = entry + self.breakeven_buffer
                 else:
@@ -109,7 +117,7 @@ class TrailingStopManager:
 
                 if self._modify_sl(ticket, new_sl, pos.volume):
                     state["activated"] = True
-                    logger.info(f"  Trailing ACTIVATED #{ticket} | Moved SL to breakeven: {new_sl:.2f}")
+                    logger.info(f"  Trailing ACTIVATED #{ticket} | SL -> breakeven: {new_sl:.2f}")
                 continue
 
             # Step 2: Trail the stop as price moves further
@@ -134,6 +142,47 @@ class TrailingStopManager:
                         if self._modify_sl(ticket, new_sl, pos.volume):
                             logger.info(f"  Trailing #{ticket} | SL: {current_sl:.2f} -> {new_sl:.2f} "
                                         f"(price: {current_price:.2f}, best: {state['best_price']:.2f})")
+
+    def _partial_close(self, ticket: int, volume: float) -> bool:
+        """Close 50% of position at market to lock in 1R profit."""
+        close_volume = max(0.01, round(volume / 2, 2))
+        try:
+            positions = mt5.positions_get(ticket=ticket)
+            if not positions:
+                return False
+            pos = positions[0]
+            tick = mt5.symbol_info_tick(self.symbol)
+            if not tick:
+                return False
+
+            direction = "BUY" if pos.type == 0 else "SELL"
+            order_type = mt5.ORDER_TYPE_SELL if direction == "BUY" else mt5.ORDER_TYPE_BUY
+            price = tick.bid if direction == "BUY" else tick.ask
+
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": self.symbol,
+                "volume": close_volume,
+                "type": order_type,
+                "position": ticket,
+                "price": price,
+                "deviation": 30,
+                "magic": self.magic,
+                "comment": "AI_partial_tp",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            result = mt5.order_send(request)
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                logger.info(f"  PARTIAL TP #{ticket}: Closed {close_volume} lots @ {result.price:.2f} (50% locked)")
+                return True
+            else:
+                error = result.comment if result else "Unknown"
+                logger.warning(f"  Partial TP failed #{ticket}: {error}")
+                return False
+        except Exception as e:
+            logger.warning(f"  Partial close error #{ticket}: {e}")
+            return False
 
     def _modify_sl(self, ticket: int, new_sl: float, volume: float) -> bool:
         """Send order to modify SL on MT5."""
