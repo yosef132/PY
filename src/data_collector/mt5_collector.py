@@ -44,7 +44,13 @@ class MT5Connector:
 
         account = mt5.account_info()
         version = mt5.version()
-        logger.info(f"Connected to MT5 - Build: {version[1]} ({version[2]})")
+        if account is None:
+            logger.error("MT5 connected but account_info() returned None")
+            mt5.shutdown()
+            return False
+        build = version[1] if version else "unknown"
+        build_date = version[2] if version else ""
+        logger.info(f"Connected to MT5 - Build: {build} ({build_date})")
         logger.info(f"Account: {account.login} | Server: {account.server}")
         logger.info(f"Balance: ${account.balance:.2f} | Equity: ${account.equity:.2f}")
         logger.info(f"Account type: {'Demo' if account.trade_mode == 0 else 'Real'}")

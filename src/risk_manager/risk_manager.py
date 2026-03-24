@@ -35,12 +35,13 @@ class RiskManager:
         self.max_open_positions = self.config.get("max_open_positions", 2)
         self.max_drawdown_pct = self.config.get("max_drawdown_pct", 10.0)
         self.min_risk_reward = self.config.get("min_risk_reward", 2.0)
+        self.min_signal_confidence = self.config.get("min_signal_confidence", 0.60)
 
         # State tracking
         self.open_positions = []
         self.daily_pnl = 0.0
         self.daily_trades = 0
-        self.max_daily_trades = 5
+        self.max_daily_trades = self.config.get("max_daily_trades", 5)
         self.current_date = None
         self.halted = False
         self.halt_reason = ""
@@ -102,7 +103,7 @@ class RiskManager:
             return False, f"R:R {signal.risk_reward:.1f} < minimum {self.min_risk_reward}"
 
         # --- Check 8: Minimum confidence ---
-        if signal.confidence < 0.60:
+        if signal.confidence < self.min_signal_confidence:
             return False, f"Confidence {signal.confidence:.0%} too low"
 
         return True, "Approved"

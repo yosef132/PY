@@ -14,50 +14,52 @@ logger = setup_logger("market_structure")
 
 def detect_swing_points(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     """
-    Detect swing highs and swing lows.
-    A swing high = a candle whose high is higher than `lookback` candles on each side.
-    A swing low = a candle whose low is lower than `lookback` candles on each side.
+    Detect swing highs and swing lows WITHOUT lookahead bias.
+
+    A swing high at bar i requires that bars i-lookback..i-1 and i+1..i+lookback
+    are all lower. In live trading this can only be CONFIRMED after `lookback`
+    bars have passed. To avoid lookahead bias in backtesting we record the
+    confirmed swing at bar i+lookback (the bar when the confirmation is complete),
+    not at bar i. Forward-fill then propagates the level to all future bars.
     """
     highs = df["high"].values
     lows = df["low"].values
     n = len(df)
 
+    # swing_high[k] / swing_low[k] is set at the CONFIRMATION bar (i + lookback),
+    # storing the actual swing price. This matches live-trading behaviour.
     swing_high = np.full(n, np.nan)
-    swing_low = np.full(n, np.nan)
+    swing_low  = np.full(n, np.nan)
 
     for i in range(lookback, n - lookback):
-        # Check swing high
-        is_swing_high = True
-        for j in range(1, lookback + 1):
-            if highs[i] <= highs[i - j] or highs[i] <= highs[i + j]:
-                is_swing_high = False
-                break
+        confirm_idx = i + lookback   # bar at which confirmation is available
+
+        # Check swing high: bar i is higher than all neighbours
+        is_swing_high = all(highs[i] > highs[i - j] for j in range(1, lookback + 1)) and \
+                        all(highs[i] > highs[i + j] for j in range(1, lookback + 1))
         if is_swing_high:
-            swing_high[i] = highs[i]
+            swing_high[confirm_idx] = highs[i]
 
         # Check swing low
-        is_swing_low = True
-        for j in range(1, lookback + 1):
-            if lows[i] >= lows[i - j] or lows[i] >= lows[i + j]:
-                is_swing_low = False
-                break
+        is_swing_low = all(lows[i] < lows[i - j] for j in range(1, lookback + 1)) and \
+                       all(lows[i] < lows[i + j] for j in range(1, lookback + 1))
         if is_swing_low:
-            swing_low[i] = lows[i]
+            swing_low[confirm_idx] = lows[i]
 
     df["swing_high"] = swing_high
-    df["swing_low"] = swing_low
+    df["swing_low"]  = swing_low
 
-    # Forward-fill the last known swing levels (for S/R reference)
+    # Forward-fill: each bar knows the LAST CONFIRMED swing level
     df["last_swing_high"] = df["swing_high"].ffill()
-    df["last_swing_low"] = df["swing_low"].ffill()
+    df["last_swing_low"]  = df["swing_low"].ffill()
 
-    # Distance from price to last swing points (useful for ML)
+    # Distance from price to last confirmed swing points
     df["dist_to_swing_high"] = (df["close"] - df["last_swing_high"]) / df["close"] * 100
-    df["dist_to_swing_low"] = (df["close"] - df["last_swing_low"]) / df["close"] * 100
+    df["dist_to_swing_low"]  = (df["close"] - df["last_swing_low"])  / df["close"] * 100
 
     sh_count = df["swing_high"].notna().sum()
     sl_count = df["swing_low"].notna().sum()
-    logger.info(f"  Swing points: {sh_count} highs, {sl_count} lows detected")
+    logger.info(f"  Swing points: {sh_count} highs, {sl_count} lows detected (no-lookahead)")
 
     return df
 

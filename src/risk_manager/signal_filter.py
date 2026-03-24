@@ -23,12 +23,12 @@ class SignalFilter:
         self.risk_config = settings.get("risk", {})
         self.session_config = settings.get("sessions", {})
 
-        # Filter thresholds
+        # Filter thresholds (all config-driven)
         self.min_rr = self.risk_config.get("min_risk_reward", 2.0)
-        self.min_confidence = 0.60
-        self.max_signals_per_bar = 1  # Only 1 signal per candle
-        self.min_sl_distance_pct = 0.05  # SL must be at least 0.05% from entry
-        self.max_sl_distance_pct = 2.0   # SL can't be more than 2% from entry
+        self.min_confidence = self.risk_config.get("min_signal_confidence", 0.60)
+        self.max_signals_per_bar = self.risk_config.get("max_signals_per_bar", 1)
+        self.min_sl_distance_pct = self.risk_config.get("min_sl_distance_pct", 0.05)
+        self.max_sl_distance_pct = self.risk_config.get("max_sl_distance_pct", 2.0)
 
     def filter_signals(self, signals: list, timeframe: str = "") -> list:
         """

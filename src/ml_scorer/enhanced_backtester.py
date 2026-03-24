@@ -29,43 +29,60 @@ class EnhancedBacktester:
     def __init__(self, initial_balance: float = 3000.0):
         self.initial_balance = initial_balance
 
-    def run_full_pipeline(self, featured_data: dict, timeframe: str = "H1") -> dict:
+    def run_full_pipeline(self, featured_data: dict, timeframe: str = "H1",
+                          train_pct: float = 0.70) -> dict:
         """
-        Run the complete ML pipeline:
-        1. Generate signals + collect trades (no ML)
-        2. Train ML model on trade outcomes
-        3. Re-run backtest WITH ML filtering
-        4. Compare results
+        Run the complete ML pipeline using a walk-forward train/test split.
+
+        IMPORTANT: To avoid data snooping, the ML model is trained ONLY on the
+        first `train_pct` of bars, and tested on the remaining held-out bars.
+        This gives honest out-of-sample performance numbers.
+
+        Pipeline:
+        1. Split data: train window (first 70%) + test window (last 30%)
+        2. Phase A: Baseline backtest on FULL data (no ML) — for comparison only
+        3. Phase B: Generate training trades from TRAIN window only, train ML model
+        4. Phase C: Run ML-enhanced backtest on TEST window only (out-of-sample)
+        5. Compare results
         """
         if timeframe not in featured_data:
             logger.error(f"  {timeframe} not found in data")
             return {}
 
         df = featured_data[timeframe]
+        split_idx = int(len(df) * train_pct)
+        df_train = df.iloc[:split_idx]
+        df_test  = df.iloc[split_idx:]
 
-        # ========== PHASE A: Baseline (no ML) ==========
+        logger.info(f"\n  Walk-forward split: {len(df_train)} train bars | "
+                    f"{len(df_test)} test bars ({train_pct*100:.0f}/{(1-train_pct)*100:.0f})")
+
+        # ========== PHASE A: Baseline on FULL data (no ML) ==========
         logger.info(f"\n{'='*60}")
-        logger.info(f"PHASE A: Baseline backtest WITHOUT ML ({timeframe})")
+        logger.info(f"PHASE A: Baseline backtest WITHOUT ML ({timeframe}, full data)")
         logger.info(f"{'='*60}")
 
         baseline_trades, baseline_stats = self._run_backtest(df, timeframe, use_ml=False)
 
-        if len(baseline_trades) < 10:
-            logger.warning(f"  Only {len(baseline_trades)} trades - not enough to train ML")
+        # ========== PHASE B: Train ML on TRAIN window only ==========
+        logger.info(f"\n{'='*60}")
+        logger.info(f"PHASE B: Training ML model on TRAIN window ({len(df_train)} bars)")
+        logger.info(f"{'='*60}")
+
+        train_trades, _ = self._run_backtest(df_train, timeframe, use_ml=False)
+
+        if len(train_trades) < 10:
+            logger.warning(f"  Only {len(train_trades)} trades in train window - not enough to train ML")
             return {
                 "baseline": baseline_stats,
                 "ml_enhanced": None,
                 "ml_metrics": None,
-                "improvement": None
+                "improvement": None,
+                "split": {"train_bars": len(df_train), "test_bars": len(df_test)},
             }
 
-        # ========== PHASE B: Train ML Model ==========
-        logger.info(f"\n{'='*60}")
-        logger.info(f"PHASE B: Training ML model on {len(baseline_trades)} trades")
-        logger.info(f"{'='*60}")
-
         feature_builder = FeatureBuilder()
-        X, y, feature_names = feature_builder.build_training_data(baseline_trades, df)
+        X, y, feature_names = feature_builder.build_training_data(train_trades, df_train)
 
         ml_scorer = MLSignalScorer()
         ml_metrics = ml_scorer.train(X, y, feature_names)
@@ -73,32 +90,40 @@ class EnhancedBacktester:
         # Save the model
         ml_scorer.save()
 
-        # ========== PHASE C: ML-Enhanced Backtest ==========
+        # ========== PHASE C: ML-Enhanced on TEST window (out-of-sample) ==========
         logger.info(f"\n{'='*60}")
-        logger.info(f"PHASE C: Re-running backtest WITH ML scoring")
+        logger.info(f"PHASE C: ML-enhanced backtest on TEST window (out-of-sample, {len(df_test)} bars)")
         logger.info(f"{'='*60}")
 
         ml_trades, ml_stats = self._run_backtest(
-            df, timeframe, use_ml=True,
+            df_test, timeframe, use_ml=True,
             ml_scorer=ml_scorer, feature_builder=feature_builder
         )
 
-        # ========== Compare ==========
+        # Baseline on same test window for fair comparison
+        baseline_test_trades, baseline_test_stats = self._run_backtest(
+            df_test, timeframe, use_ml=False
+        )
+
+        # ========== Compare (test window only — apples to apples) ==========
         improvement = {}
-        if baseline_stats["total_trades"] > 0 and ml_stats["total_trades"] > 0:
+        if baseline_test_stats["total_trades"] > 0 and ml_stats["total_trades"] > 0:
             improvement = {
-                "trades_reduction": baseline_stats["total_trades"] - ml_stats["total_trades"],
-                "win_rate_change": ml_stats["win_rate"] - baseline_stats["win_rate"],
-                "pnl_change": ml_stats["total_pnl"] - baseline_stats["total_pnl"],
-                "drawdown_change": ml_stats["max_drawdown_pct"] - baseline_stats["max_drawdown_pct"],
-                "profit_factor_change": ml_stats["profit_factor"] - baseline_stats["profit_factor"],
+                "trades_reduction": baseline_test_stats["total_trades"] - ml_stats["total_trades"],
+                "win_rate_change": ml_stats["win_rate"] - baseline_test_stats["win_rate"],
+                "pnl_change": ml_stats["total_pnl"] - baseline_test_stats["total_pnl"],
+                "drawdown_change": ml_stats["max_drawdown_pct"] - baseline_test_stats["max_drawdown_pct"],
+                "profit_factor_change": ml_stats["profit_factor"] - baseline_test_stats["profit_factor"],
             }
 
         return {
-            "baseline": baseline_stats,
-            "ml_enhanced": ml_stats,
+            "baseline": baseline_test_stats,       # baseline on test window
+            "baseline_full": baseline_stats,        # baseline on full data (reference)
+            "ml_enhanced": ml_stats,                # ML on test window (out-of-sample)
             "ml_metrics": ml_metrics,
             "improvement": improvement,
+            "split": {"train_bars": len(df_train), "test_bars": len(df_test),
+                      "train_trades": len(train_trades), "test_trades": len(ml_trades)},
         }
 
     def _run_backtest(self, df, timeframe, use_ml=False,
@@ -185,8 +210,16 @@ class EnhancedBacktester:
         """Print side-by-side comparison of baseline vs ML-enhanced."""
 
         print("\n" + "=" * 70)
-        print("  ML SIGNAL SCORER - RESULTS COMPARISON")
+        print("  ML SIGNAL SCORER - RESULTS COMPARISON (OUT-OF-SAMPLE)")
         print("=" * 70)
+
+        split = results.get("split", {})
+        if split:
+            print(f"\n  Walk-forward split:")
+            print(f"    Train: {split.get('train_bars', '?')} bars, "
+                  f"{split.get('train_trades', '?')} trades (model trained here)")
+            print(f"    Test:  {split.get('test_bars', '?')} bars, "
+                  f"{split.get('test_trades', '?')} trades (model NEVER saw this)")
 
         baseline = results.get("baseline", {})
         ml = results.get("ml_enhanced")
@@ -201,14 +234,14 @@ class EnhancedBacktester:
             print(f"  {'Features used:':<25} {ml_metrics['n_features']}")
             print(f"\n  Top predictive features:")
             for feat, imp in ml_metrics.get("top_features", [])[:7]:
-                bar = "█" * int(imp * 100)
+                bar = "#" * int(imp * 100)
                 print(f"    {feat:<25} {imp:.3f} {bar}")
 
         # Side by side comparison
         if ml and baseline.get("total_trades", 0) > 0:
-            print(f"\n  {'─'*60}")
+            print(f"\n  {'-'*60}")
             print(f"  {'Metric':<25} {'Baseline':>12} {'+ ML':>12} {'Change':>12}")
-            print(f"  {'─'*60}")
+            print(f"  {'-'*60}")
 
             metrics = [
                 ("Total Trades", "total_trades", "", False),
@@ -241,15 +274,15 @@ class EnhancedBacktester:
 
                 # Color indicator
                 if key == "max_drawdown_pct":
-                    indicator = " ✓" if diff < 0 else " ✗"
+                    indicator = " OK" if diff < 0 else " XX"
                 elif higher_better:
-                    indicator = " ✓" if diff > 0 else " ✗"
+                    indicator = " OK" if diff > 0 else " XX"
                 else:
                     indicator = ""
 
                 print(f"  {label:<25} {b_str:>12} {m_str:>12} {d_str:>10}{indicator}")
 
-            print(f"  {'─'*60}")
+            print(f"  {'-'*60}")
 
             # ML strategy breakdown
             if ml.get("strategy_breakdown"):

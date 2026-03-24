@@ -36,7 +36,7 @@ def main():
     print("  Session 8: Live Paper Trading on MT5 Demo")
     print("=" * 70)
     print()
-    print("  ⚠️  IMPORTANT REMINDERS:")
+    print("  !! IMPORTANT REMINDERS:")
     print("  - This trades on your DEMO account only")
     print("  - Make sure MT5 is running and logged in")
     print("  - The bot scans every 5 minutes")

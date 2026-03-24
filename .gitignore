@@ -1,3 +1,4 @@
+.env
 __pycache__/
 *.py[cod]
 .venv/
@@ -8,3 +9,13 @@ data/*.db
 logs/*.log
 .idea/
 .vscode/
+
+# Temporary / one-time scripts
+full_run.txt
+startup_log.txt
+close_bad_trades.py
+integrate_trailing.py
+setup_trailing_stop.py
+
+# Debugging buffer (regenerated on each run)
+data/rejected_signals.json

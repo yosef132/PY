@@ -43,20 +43,56 @@ class MLSignalScorer:
         """
         self.feature_names = feature_names
 
-        if len(X) < 20:
-            logger.warning(f"  Only {len(X)} samples - too few for reliable training")
+        n_samples = len(X)
+        n_features = X.shape[1] if len(X) > 0 else 1
+
+        if n_samples < 20:
+            logger.warning(f"  Only {n_samples} samples - too few for reliable training")
             logger.warning(f"  Need at least 50+ trades for meaningful ML learning")
 
-        # XGBoost with conservative settings to avoid overfitting
+        # Adaptive regularization: scale complexity DOWN when data is scarce.
+        # With few samples and many features the model easily memorises labels.
+        # Rule of thumb: need ~10-20 samples per feature for generalisation.
+        ratio = n_samples / max(n_features, 1)
+
+        if ratio < 5:           # very few samples per feature → conservative but still learning
+            max_depth        = 2
+            n_estimators     = 50   # more trees needed to find weak patterns
+            min_child_weight = 5
+            reg_alpha        = 0.5
+            reg_lambda       = 2.0
+            subsample        = 0.7
+            colsample_bytree = 0.7
+            logger.warning(f"  Low data ratio ({ratio:.1f} samples/feature) — using conservative model")
+        elif ratio < 10:        # moderate scarcity
+            max_depth        = 3
+            n_estimators     = 50
+            min_child_weight = 7
+            reg_alpha        = 0.5
+            reg_lambda       = 3.0
+            subsample        = 0.7
+            colsample_bytree = 0.7
+        else:                   # enough data — normal settings
+            max_depth        = 4
+            n_estimators     = 100
+            min_child_weight = 3
+            reg_alpha        = 0.1
+            reg_lambda       = 1.0
+            subsample        = 0.8
+            colsample_bytree = 0.8
+
+        logger.info(f"  XGBoost config: depth={max_depth}, trees={n_estimators}, "
+                    f"samples/feature ratio={ratio:.1f}")
+
         self.model = XGBClassifier(
-            n_estimators=100,
-            max_depth=4,              # Shallow trees = less overfitting
-            learning_rate=0.1,
-            subsample=0.8,            # Use 80% of data per tree
-            colsample_bytree=0.8,     # Use 80% of features per tree
-            min_child_weight=3,       # Minimum samples in leaf
-            reg_alpha=0.1,            # L1 regularization
-            reg_lambda=1.0,           # L2 regularization
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=0.05,       # lower LR = more robust, works with any tree count
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            min_child_weight=min_child_weight,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
             random_state=42,
             eval_metric="logloss",
             use_label_encoder=False,

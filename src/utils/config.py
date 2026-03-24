@@ -1,12 +1,18 @@
 """
 Configuration loader for the XAUUSD AI Trading System.
+Credentials are loaded from .env (never hardcoded in YAML).
 """
 
+import os
 import yaml
 from pathlib import Path
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
+
+# Load .env file once at import time
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def load_yaml(filename: str) -> dict:
@@ -18,7 +24,27 @@ def load_yaml(filename: str) -> dict:
 
 
 def get_settings() -> dict:
-    return load_yaml("settings.yaml")
+    settings = load_yaml("settings.yaml")
+
+    # Inject credentials from environment variables (override YAML values)
+    settings.setdefault("mt5", {})
+    if os.getenv("MT5_LOGIN"):
+        try:
+            settings["mt5"]["login"] = int(os.getenv("MT5_LOGIN"))
+        except ValueError:
+            raise ValueError(f"MT5_LOGIN in .env must be a number, got: '{os.getenv('MT5_LOGIN')}'")
+    if os.getenv("MT5_PASSWORD"):
+        settings["mt5"]["password"] = os.getenv("MT5_PASSWORD")
+    if os.getenv("MT5_SERVER"):
+        settings["mt5"]["server"] = os.getenv("MT5_SERVER")
+
+    settings.setdefault("alerts", {})
+    if os.getenv("TELEGRAM_TOKEN"):
+        settings["alerts"]["telegram_token"] = os.getenv("TELEGRAM_TOKEN")
+    if os.getenv("TELEGRAM_CHAT_ID"):
+        settings["alerts"]["telegram_chat_id"] = os.getenv("TELEGRAM_CHAT_ID")
+
+    return settings
 
 
 def get_strategies() -> dict:

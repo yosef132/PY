@@ -1,7 +1,7 @@
 mt5:
-  login: 92877
-  password: Hd*bTpI5
-  server: Nexcbitmarket-Trade
+  login: null        # Set MT5_LOGIN in .env
+  password: null     # Set MT5_PASSWORD in .env
+  server: null       # Set MT5_SERVER in .env
   terminal_path: null
 symbol: XAUUSD
 timeframes:
@@ -17,13 +17,18 @@ data:
 risk:
   risk_per_trade_pct: 0.5
   max_daily_loss_pct: 3.0
-  max_open_positions: 2
+  max_open_positions: 3
+  max_daily_trades: 10      # Increased from 5 for faster data collection; lower to 5 after 300 trades
   min_risk_reward: 2.0
   max_drawdown_pct: 10.0
   sl_atr_multiplier: 1.5
   tp_atr_multiplier: 3.0
   trailing_stop_atr: 0.5
   news_blackout_minutes: 30
+  min_signal_confidence: 0.50   # Lowered from 0.60 — matches ML threshold; raise back to 0.60 once 300+ trades collected
+  max_signals_per_bar: 1        # Max signals per candle per direction
+  min_sl_distance_pct: 0.05     # SL must be at least 0.05% from entry
+  max_sl_distance_pct: 2.0      # SL cannot be more than 2% from entry
 sessions:
   london_start: 07:00
   london_end: '12:00'
@@ -32,20 +37,25 @@ sessions:
   trade_overlap_only: false
 ml:
   model_type: xgboost
-  confidence_threshold: 0.65
+  confidence_threshold: 0.50   # Lowered from 0.65 — model only scores 0.57-0.58 with 129 training trades; raise back to 0.65 once 300+ trades collected
   retrain_day: Sunday
   lookback_months: 6
   min_trades_to_train: 100
 execution:
   mode: demo
+  shadow_mode: false     # true = analyse real account but NEVER execute any trade
   lot_size: 0.01
   slippage_points: 30
   magic_number: 123456
+loop:
+  scan_interval_seconds: 300    # How often to scan for signals (5 min)
+  news_refresh_seconds: 900     # How often to refresh news/calendar (15 min)
+  h4_refresh_seconds: 3600      # How often to refresh H4/D1 trend (1 hour)
 logging:
   level: INFO
   log_dir: logs
   trade_log_db: data/trades.db
 alerts:
   telegram_enabled: true
-  telegram_token: 8760045272:AAH2VKn6vNRFlr0pb_KVGOIl8k_v_wz0FGg
-  telegram_chat_id: '6553286774'
+  telegram_token: null     # Set TELEGRAM_TOKEN in .env
+  telegram_chat_id: null   # Set TELEGRAM_CHAT_ID in .env

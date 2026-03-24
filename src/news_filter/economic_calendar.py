@@ -103,8 +103,8 @@ class EconomicEvent:
         return 0
 
     def __str__(self):
-        impact_stars = "★" * self.gold_impact + "☆" * (3 - self.gold_impact)
-        return (f"[{impact_stars}] {self.event_time.strftime('%H:%M')} "
+        impact_stars = "*" * self.gold_impact + "-" * (3 - self.gold_impact)
+        return (f"[{impact_stars}] {self.event_time.strftime('%Y-%m-%d %H:%M')} "
                 f"{self.currency} - {self.name} ({self.impact})")
 
     def to_dict(self) -> dict:
@@ -128,7 +128,14 @@ class EconomicCalendar:
         self.last_fetch = None
 
     def fetch_today_events(self) -> List[EconomicEvent]:
-        """Fetch today's economic events from multiple sources."""
+        """Fetch economic events for the next 48 hours (covers weekend -> Monday)."""
+        # Return cached data if fetched within the last 30 minutes
+        if self.last_fetch is not None:
+            age_minutes = (datetime.now(timezone.utc) - self.last_fetch).total_seconds() / 60
+            if age_minutes < 30 and self.events:
+                logger.info(f"  Calendar: using cached data ({age_minutes:.0f} min old, {len(self.events)} events)")
+                return self.events
+
         events = []
 
         # Try free APIs in order of reliability
@@ -147,7 +154,7 @@ class EconomicCalendar:
         self.events = sorted(gold_events, key=lambda e: e.event_time)
         self.last_fetch = datetime.now(timezone.utc)
 
-        logger.info(f"  Calendar: {len(gold_events)} gold-relevant events today "
+        logger.info(f"  Calendar: {len(gold_events)} gold-relevant events in next 48h "
                      f"(out of {len(events)} total)")
 
         return self.events
@@ -164,7 +171,8 @@ class EconomicCalendar:
 
             if resp.status_code == 200:
                 data = resp.json()
-                today = datetime.now(timezone.utc).date()
+                now = datetime.now(timezone.utc)
+                window_end = now + timedelta(hours=48)
 
                 for item in data:
                     try:
@@ -177,8 +185,8 @@ class EconomicCalendar:
                             date_str.replace("Z", "+00:00")
                         )
 
-                        # Only today's events
-                        if event_time.date() != today:
+                        # Events in next 48 hours (covers weekend -> Monday session)
+                        if not (now <= event_time <= window_end):
                             continue
 
                         impact_map = {

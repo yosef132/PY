@@ -28,17 +28,16 @@ class NewsManager:
         logger.info("  Refreshing news data...")
 
         # Economic calendar
-        self.calendar.fetch_calendar()
+        self.calendar.fetch_today_events()
 
-        # Headlines
-        self.headlines = self.scraper.fetch_headlines()
+        # Headlines (scraper returns list of strings)
+        self.headlines = self.scraper.fetch_all_headlines()
 
         # Score sentiment
         if self.headlines:
-            texts = [h["title"] for h in self.headlines]
-            self.sentiment = self.sentiment_scorer.score_headlines(texts)
+            self.sentiment = self.sentiment_scorer.score_headlines(self.headlines)
         else:
-            self.sentiment = {"score": 0, "direction": "neutral"}
+            self.sentiment = {"avg_score": 0, "direction": "neutral", "confidence": 0}
 
         direction = self.sentiment.get("direction", "neutral")
         score = self.sentiment.get("score", 0)
@@ -61,7 +60,7 @@ class NewsManager:
             return False, f"NEWS BLACKOUT: {blackout_reason}", 0
 
         # Get sentiment
-        sent_score = self.sentiment.get("score", 0)
+        sent_score = self.sentiment.get("avg_score", self.sentiment.get("score", 0))
         sent_dir = self.sentiment.get("direction", "neutral")
 
         # Strong opposing sentiment blocks trade

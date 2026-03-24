@@ -56,21 +56,21 @@ class MT5Executor:
         else:
             return {"success": False, "error": f"Invalid direction: {direction}"}
 
-        # Validate SL/TP
+        # Validate SL/TP — reject if wrong-sided (stale signal from a historical bar)
         if direction == "BUY":
             if stop_loss >= price:
-                logger.warning(f"  SL {stop_loss} >= price {price}, adjusting")
-                stop_loss = price - 10  # Fallback: 10 points below
+                logger.warning(f"  REJECTED: BUY SL {stop_loss:.2f} is above price {price:.2f} (stale signal)")
+                return {"success": False, "error": "SL wrong side — stale signal"}
             if take_profit <= price:
-                logger.warning(f"  TP {take_profit} <= price {price}, adjusting")
-                take_profit = price + 20
+                logger.warning(f"  REJECTED: BUY TP {take_profit:.2f} is below price {price:.2f} (stale signal)")
+                return {"success": False, "error": "TP wrong side — stale signal"}
         else:
             if stop_loss <= price:
-                logger.warning(f"  SL {stop_loss} <= price {price}, adjusting")
-                stop_loss = price + 10
+                logger.warning(f"  REJECTED: SELL SL {stop_loss:.2f} is below price {price:.2f} (stale signal)")
+                return {"success": False, "error": "SL wrong side — stale signal"}
             if take_profit >= price:
-                logger.warning(f"  TP {take_profit} >= price {price}, adjusting")
-                take_profit = price - 20
+                logger.warning(f"  REJECTED: SELL TP {take_profit:.2f} is above price {price:.2f} (stale signal)")
+                return {"success": False, "error": "TP wrong side — stale signal"}
 
         # Round to proper decimals
         symbol_info = mt5.symbol_info(self.symbol)

@@ -184,35 +184,44 @@ class AutoRetrainer:
         new_model = MLSignalScorer()
         new_metrics = new_model.train(X, y, feature_names)
 
-        # Step 5: Compare with old model
-        logger.info("  Step 5: Comparing with current model...")
+        # Step 5: Compare with old model using CV accuracy (not train accuracy)
+        # Train accuracy is always near 100% due to overfitting — meaningless for comparison.
+        # CV accuracy on a held-out time-series fold is the honest metric.
+        logger.info("  Step 5: Comparing with current model (using CV accuracy)...")
         old_model = MLSignalScorer()
         old_loaded = old_model.load()
 
         should_replace = True
         comparison = {}
 
-        if old_loaded:
-            # Test both models on the same data
-            old_preds = old_model.model.predict_proba(X)[:, 1]
-            new_preds = new_model.model.predict_proba(X)[:, 1]
+        new_cv_accuracy = new_metrics["cv_accuracy"]   # honest out-of-fold score
 
-            old_accuracy = np.mean((old_preds > 0.5) == y) * 100
-            new_accuracy = new_metrics["train_accuracy"]
+        if old_loaded and len(X) >= 20:
+            # Re-evaluate old model with time-series CV on the NEW data
+            # (same folds as the new model so the comparison is fair)
+            from sklearn.model_selection import cross_val_score, TimeSeriesSplit
+            from sklearn.metrics import accuracy_score
+            n_splits = min(5, max(2, len(X) // 20))
+            tscv = TimeSeriesSplit(n_splits=n_splits)
+            try:
+                old_cv_scores = cross_val_score(old_model.model, X, y, cv=tscv, scoring="accuracy")
+                old_cv_accuracy = round(old_cv_scores.mean() * 100, 1)
+            except Exception:
+                old_cv_accuracy = round(np.mean((old_model.model.predict_proba(X)[:, 1] > 0.5) == y) * 100, 1)
 
             comparison = {
-                "old_accuracy": round(old_accuracy, 1),
-                "new_accuracy": round(new_accuracy, 1),
-                "improvement": round(new_accuracy - old_accuracy, 1),
+                "old_cv_accuracy": old_cv_accuracy,
+                "new_cv_accuracy": new_cv_accuracy,
+                "improvement": round(new_cv_accuracy - old_cv_accuracy, 1),
             }
 
-            logger.info(f"  Old model accuracy: {old_accuracy:.1f}%")
-            logger.info(f"  New model accuracy: {new_accuracy:.1f}%")
+            logger.info(f"  Old model CV accuracy: {old_cv_accuracy:.1f}%")
+            logger.info(f"  New model CV accuracy: {new_cv_accuracy:.1f}%")
 
-            # Only replace if new model is better (or at least not worse)
-            if new_accuracy < old_accuracy - 5:
+            # Replace only if new CV accuracy is meaningfully better (>1%)
+            if new_cv_accuracy < old_cv_accuracy - 1.0:
                 should_replace = False
-                logger.warning(f"  New model is worse! Keeping old model.")
+                logger.warning(f"  New model CV accuracy lower — keeping old model.")
         else:
             logger.info("  No old model found - saving new model as first version")
 
@@ -233,8 +242,9 @@ class AutoRetrainer:
             "timestamp": datetime.now().isoformat(),
             "trades_used": len(trades),
             "win_rate": round(np.mean(y) * 100, 1),
-            "cv_accuracy": new_metrics["cv_accuracy"],
-            "train_accuracy": new_metrics["train_accuracy"],
+            "cv_accuracy": new_metrics["cv_accuracy"],       # honest metric
+            "cv_std": new_metrics["cv_std"],
+            "train_accuracy": new_metrics["train_accuracy"], # for reference only — expect ~99%
             "replaced": should_replace,
             "comparison": comparison,
             "top_features": [(f, round(i, 4)) for f, i in new_metrics["top_features"][:5]],
