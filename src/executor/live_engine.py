@@ -376,7 +376,7 @@ class LiveTradingEngine:
             collector = DataCollector(self.connector)
             featured_data = {}
 
-            w1_df = collector.fetch_candles("W1", num_bars=60)
+            w1_df = collector.fetch_candles("W1", num_bars=250)
             if not w1_df.empty:
                 featured_data["W1"] = self.feature_engine.compute_features(w1_df, "W1")
 
